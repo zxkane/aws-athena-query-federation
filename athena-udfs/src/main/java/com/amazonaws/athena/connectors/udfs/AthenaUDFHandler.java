@@ -22,7 +22,14 @@ package com.amazonaws.athena.connectors.udfs;
 import com.amazonaws.athena.connector.lambda.handlers.UserDefinedFunctionHandler;
 import com.amazonaws.athena.connector.lambda.security.CachableSecretsManager;
 import com.amazonaws.services.secretsmanager.AWSSecretsManagerClient;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.ToString;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
@@ -31,8 +38,12 @@ import javax.crypto.NoSuchPaddingException;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
+import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidAlgorithmParameterException;
@@ -40,8 +51,10 @@ import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.Base64;
+import java.util.List;
 import java.util.zip.DataFormatException;
 import java.util.zip.Deflater;
+import java.util.zip.GZIPInputStream;
 import java.util.zip.Inflater;
 
 public class AthenaUDFHandler
@@ -52,6 +65,13 @@ public class AthenaUDFHandler
     public static final int GCM_TAG_LENGTH = 16; // max allowable
 
     private final CachableSecretsManager cachableSecretsManager;
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    
+    static {
+        // Configure ObjectMapper to ignore unknown properties
+        OBJECT_MAPPER.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    }
 
     public AthenaUDFHandler()
     {
@@ -153,6 +173,41 @@ public class AthenaUDFHandler
     }
 
     /**
+     * Decompresses a valid String that has been compressed using the zlib compression library.
+     * Decodes bytes with Base64 decoding scheme.
+     *
+     * @param input the String to be decompressed
+     * @return the decompressed String
+     */
+    public String decompress_gzip(String input)
+    {
+        if (input == null) {
+            return null;
+        }
+
+        byte[] inputBytes = Base64.getDecoder().decode((input));
+
+        try (GZIPInputStream gis = new GZIPInputStream(new ByteArrayInputStream(inputBytes))) {
+            BufferedReader bf = new BufferedReader(new InputStreamReader(gis, StandardCharsets.UTF_8));
+            StringBuilder outStr = new StringBuilder();
+            String line;
+            while ((line = bf.readLine()) != null) {
+                outStr.append(line);
+            }
+            final String str = outStr.toString();
+
+            TypeReference<List<EventData>> typeRef = new TypeReference<List<EventData>>() {};
+            List<EventData> eventDataList = OBJECT_MAPPER.readValue(str, typeRef);
+
+            // Convert List<EventData> to JSON string for tripping the unwanted fields
+            return OBJECT_MAPPER.writeValueAsString(eventDataList);
+        }
+        catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
      * This method decrypts the ciphertext with a data key stored AWS Secret Manager. Before using this function, create
      * a secret in AWS Secret Manager. Do a base64 encode to your data key and convert it to string. Store it as
      * _PLAINTEXT_ in the secret (do not include any quotes, brackets, etc). Also make sure to use DefaultEncryptionKey
@@ -243,5 +298,18 @@ public class AthenaUDFHandler
         catch (NoSuchPaddingException | NoSuchAlgorithmException | InvalidKeyException | InvalidAlgorithmParameterException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    @Getter
+    @Setter
+    @ToString
+    static final class EventData implements Serializable
+    {
+        private static final long serialVersionUID = 1L;
+        @JsonProperty("event_id")
+        private String eventId;
+        private long timestamp;
+        @JsonProperty("event_type")
+        private String eventType;
     }
 }
