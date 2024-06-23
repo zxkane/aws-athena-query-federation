@@ -2,6 +2,16 @@
 
 This connector extends Amazon Athena's capability by adding customizable UDFs via Lambda.
 
+## Special UDFs for decompress the raw [Clickstream](https://github.com/awslabs/clickstream-analytics-on-aws) data
+
+> As a workaround of Athena UDFs error "athena udf executed in context[calling UDF method xxx] with message[Response payload size exceeded maximum allowed payload size (6291556 bytes).]", we have different UDFs to extract different parts of Clickstream event.
+
+1. "decompress_clickstream_common_fields": Decompress the data and extract the most common fields
+
+2. "decompress_clickstream_attribute_fields": Decompress the data and extract the custom `attributes` field
+
+3. "decompress_clickstream_user_fields": Decompress the data and extract the `user` field
+
 ## Supported UDFs
 
 1. "compress": Compresses a String

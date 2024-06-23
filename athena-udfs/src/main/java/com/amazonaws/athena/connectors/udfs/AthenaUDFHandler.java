@@ -52,6 +52,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.zip.DataFormatException;
 import java.util.zip.Deflater;
 import java.util.zip.GZIPInputStream;
@@ -179,12 +180,62 @@ public class AthenaUDFHandler
      * @param input the String to be decompressed
      * @return the decompressed String
      */
-    public String decompress_gzip(String input)
+    public String decompress_clickstream_common_fields(String input)
     {
         if (input == null) {
             return null;
         }
 
+        try {
+            final String decompressStr = this.decompressClickstreamEvent(input);
+            TypeReference<List<EventData>> typeRef = new TypeReference<List<EventData>>() {};
+            List<EventData> eventDataList = OBJECT_MAPPER.readValue(decompressStr, typeRef);
+
+            return OBJECT_MAPPER.writeValueAsString(eventDataList); 
+        } 
+        catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public String decompress_clickstream_attribute_fields(String input)
+    {
+        if (input == null) {
+            return null;
+        }
+
+        try {
+            final String decompressStr = this.decompressClickstreamEvent(input);
+            TypeReference<List<EventAttributeData>> typeRef = new TypeReference<List<EventAttributeData>>() {};
+            List<EventAttributeData> eventDataList = OBJECT_MAPPER.readValue(decompressStr, typeRef);
+
+            return OBJECT_MAPPER.writeValueAsString(eventDataList); 
+        } 
+        catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public String decompress_clickstream_user_fields(String input)
+    {
+        if (input == null) {
+            return null;
+        }
+
+        try {
+            final String decompressStr = this.decompressClickstreamEvent(input);
+            TypeReference<List<EventUserData>> typeRef = new TypeReference<List<EventUserData>>() {};
+            List<EventUserData> eventDataList = OBJECT_MAPPER.readValue(decompressStr, typeRef);
+
+            return OBJECT_MAPPER.writeValueAsString(eventDataList); 
+        } 
+        catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private String decompressClickstreamEvent(String input) throws IOException
+    {
         byte[] inputBytes = Base64.getDecoder().decode((input));
 
         try (GZIPInputStream gis = new GZIPInputStream(new ByteArrayInputStream(inputBytes))) {
@@ -194,16 +245,7 @@ public class AthenaUDFHandler
             while ((line = bf.readLine()) != null) {
                 outStr.append(line);
             }
-            final String str = outStr.toString();
-
-            TypeReference<List<EventData>> typeRef = new TypeReference<List<EventData>>() {};
-            List<EventData> eventDataList = OBJECT_MAPPER.readValue(str, typeRef);
-
-            // Convert List<EventData> to JSON string for tripping the unwanted fields
-            return OBJECT_MAPPER.writeValueAsString(eventDataList);
-        }
-        catch (IOException e) {
-            throw new RuntimeException(e);
+            return outStr.toString();
         }
     }
 
@@ -311,5 +353,67 @@ public class AthenaUDFHandler
         private long timestamp;
         @JsonProperty("event_type")
         private String eventType;
+        @JsonProperty("unique_id")
+        private String uniqueId;
+        @JsonProperty("device_id")
+        private String deviceId;
+        private String platform;
+        @JsonProperty("os_version")
+        private String osVersion;
+        // private String make;
+        // private String brand;
+        // private String model;
+        // private String carrier;
+        // private String locale;
+        @JsonProperty("network_type")
+        private String netwrokType;
+        @JsonProperty("screen_height")
+        private int screenHeight;
+        @JsonProperty("screen_width")
+        private int screenWidth;
+        @JsonProperty("zone_offset")
+        private int zoneOffset;
+        @JsonProperty("system_language")
+        private String systemLanguage;
+        @JsonProperty("country_code")
+        private String countryCode;
+        @JsonProperty("sdk_version")
+        private String sdkVersion;
+        // @JsonProperty("sdk_name")
+        // private String sdkName;
+        @JsonProperty("app_version")
+        private String appVersion;
+        // @JsonProperty("app_package_name")
+        // private String appPackageName;
+        // @JsonProperty("app_title")
+        // private String appTitle;
+        @JsonProperty("app_id")
+        private String appId;
+    }
+
+    @Getter
+    @Setter
+    @ToString
+    static final class EventAttributeData implements Serializable
+    {
+        private Map<String, Object> attributes;
+    }
+
+    @Getter
+    @Setter
+    @ToString
+    static final class EventUserData implements Serializable
+    {
+        private Map<String, UserAttribute> user;
+    }
+
+    @Getter
+    @Setter
+    @ToString
+    private static class UserAttribute implements Serializable
+    {
+        private String value;
+        @JsonProperty("set_timestamp")
+        private long timestamp;
     }
 }
